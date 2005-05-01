@@ -1,0 +1,50 @@
+Spreadsheet/ReadSXC version 0.01
+=================================
+
+Extract OpenOffice 1.x spreadsheet data.
+
+This is a very simple module for extracting data from OpenOffice 1.x
+spreadsheet files (.sxc). It exports only one function read_sxc()
+which takes a filename as an argument and returns a hash of references
+to two-dimensional arrays. The hash keys correspond to the names of
+worksheets in the OpenOffice workbook. The two-dimensional arrays
+correspond to rows and cells in the respective spreadsheets.
+
+Spreadsheet::ReadSXC requires XML::Parser::Lite::Tree to parse the
+XML contained in .sxc files. It recursively traverses the XML tree
+to find spreadsheet cells and collect their data. Only the contents
+of text:p elements are returned, not the actual values of
+table:value attributes.
+
+Empty spreadsheet cells correspond to undef values in array rows.
+If the .sxc file contains an empty spreadsheet its hash element will
+point to an empty array.
+
+Spreadsheet::ReadSXC truncates spreadsheets so that there are no
+empty rows after the last row containing data and no empty columns
+after the last column containing data.
+
+INSTALLATION
+
+To install this module type the following:
+
+   perl Makefile.PL
+   make
+   make test
+   make install
+
+DEPENDENCIES
+
+This module requires these other modules and libraries:
+
+   XML::Parser::Lite
+   XML::Parser::Lite::Tree
+   Test::More
+
+COPYRIGHT AND LICENCE
+
+Copyright (C) 2005 Christoph Terhechte
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself. 
+
