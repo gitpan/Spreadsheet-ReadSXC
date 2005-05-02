@@ -1,4 +1,4 @@
-Spreadsheet/ReadSXC version 0.01
+Spreadsheet/ReadSXC version 0.02
 =================================
 
 Extract OpenOffice 1.x spreadsheet data.
@@ -37,7 +37,6 @@ DEPENDENCIES
 
 This module requires these other modules and libraries:
 
-   XML::Parser::Lite
    XML::Parser::Lite::Tree
    Test::More
 

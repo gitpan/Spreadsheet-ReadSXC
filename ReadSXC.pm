@@ -8,7 +8,7 @@ require Exporter;
 
 our @ISA = qw(Exporter);
 our @EXPORT_OK = qw(read_sxc);
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 use Archive::Zip;
 use XML::Parser::Lite::Tree;
@@ -185,7 +185,8 @@ point to an empty array.
 Table rows in .sxc files may have a "table:number-rows-repeated"
 attribute, which is often used for consecutive empty rows. OpenOffice
 sometimes sets the numbers of rows in a worksheet to 32,000 and the
-number of columns to 256. Spreadsheet::ReadSXC truncates such sheets
+number of columns to 256, even if only a few lower-numbered rows and
+cells actually contain data. Spreadsheet::ReadSXC truncates such sheets
 so that there are no empty rows after the last row containing data and
 no empty columns after the last column containing data.
 

@@ -4,3 +4,5 @@ Revision history for Perl extension Spreadsheet::ReadSXC.
 	- original version; created by h2xs 1.22 with options
 		-XAn Spreadsheet::ReadSXC
 
+0.02  Mon Apr 1 2005
+	- fixed prerequisites in Makefile.PL
