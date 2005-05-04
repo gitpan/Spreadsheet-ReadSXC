@@ -8,7 +8,7 @@ require Exporter;
 
 our @ISA = qw(Exporter);
 our @EXPORT_OK = qw(read_sxc);
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 use Archive::Zip;
 use XML::Parser::Lite::Tree;
@@ -183,12 +183,13 @@ If the .sxc file contains an empty spreadsheet its hash element will
 point to an empty array.
 
 Table rows in .sxc files may have a "table:number-rows-repeated"
-attribute, which is often used for consecutive empty rows. OpenOffice
-sometimes sets the numbers of rows in a worksheet to 32,000 and the
-number of columns to 256, even if only a few lower-numbered rows and
-cells actually contain data. Spreadsheet::ReadSXC truncates such sheets
-so that there are no empty rows after the last row containing data and
-no empty columns after the last column containing data.
+attribute, which is often used for consecutive empty rows. When you
+format whole rows and/or columns in OpenOffice, it sets the numbers
+of rows in a worksheet to 32,000 and the number of columns to 256, even
+if only a few lower-numbered rows and cells actually contain data.
+Spreadsheet::ReadSXC truncates such sheets so that there are no empty
+rows after the last row containing data and no empty columns after the
+last column containing data.
 
 Still it is perfectly legal for an .sxc file to apply the
 "table:number-rows-repeated" attribute to rows that actually contain
