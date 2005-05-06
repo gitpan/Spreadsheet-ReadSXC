@@ -1,7 +1,7 @@
 use Test::More tests => 8;
 BEGIN { use_ok('Spreadsheet::ReadSXC') };
 BEGIN { use_ok('Archive::Zip') };
-BEGIN { use_ok('XML::Parser::Lite::Tree') };
+BEGIN { use_ok('XML::Parser') };
 
 my $zip = Archive::Zip->new();
 ok(( $zip->read("t.sxc") == 0 ), 'Unzipping .sxc file');

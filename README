@@ -1,17 +1,18 @@
-Spreadsheet/ReadSXC version 0.03
+Spreadsheet/ReadSXC version 0.10
 =================================
 
 Extract OpenOffice 1.x spreadsheet data.
 
-This is a very simple module for extracting data from OpenOffice 1.x
+Spreadsheet::ReadSXC extracts data from OpenOffice 1.x
 spreadsheet files (.sxc). It exports only one function read_sxc()
-which takes a filename as an argument and returns a hash of references
-to two-dimensional arrays. The hash keys correspond to the names of
+which takes a filename and an optional reference to a hash of
+options as arguments and returns a hash of references to
+two-dimensional arrays. The hash keys correspond to the names of
 worksheets in the OpenOffice workbook. The two-dimensional arrays
 correspond to rows and cells in the respective spreadsheets.
 
-Spreadsheet::ReadSXC requires XML::Parser::Lite::Tree to parse the
-XML contained in .sxc files. It recursively traverses the XML tree
+Spreadsheet::ReadSXC requires XML::Parser to parse the XML
+contained in .sxc files. It recursively traverses an XML tree
 to find spreadsheet cells and collect their data. Only the contents
 of text:p elements are returned, not the actual values of
 table:value attributes.
@@ -22,7 +23,12 @@ point to an empty array.
 
 Spreadsheet::ReadSXC truncates spreadsheets so that there are no
 empty rows after the last row containing data and no empty columns
-after the last column containing data.
+after the last column containing data (unless the 'NoTruncate'
+option is used).
+
+The behaviour of this module is controlled through several options,
+namely 'ReplaceNewlineWith', 'IncludeCoveredCells', 'DropHiddenRows',
+'DropHiddenColumns', 'NoTruncate', and 'StandardDate'.
 
 INSTALLATION
 
@@ -37,7 +43,7 @@ DEPENDENCIES
 
 This module requires these other modules and libraries:
 
-   XML::Parser::Lite::Tree
+   XML::Parser
    Archive::Zip
    Test::More
 

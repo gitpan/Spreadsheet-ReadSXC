@@ -7,6 +7,14 @@ Revision history for Perl extension Spreadsheet::ReadSXC.
 0.02  Mon May 1 2005
 	- fixed prerequisites in Makefile.PL
 
-0.03  Tue May 2 2005
+0.03  Tue May 3 2005
 	- more prerequisites in Makefile.PL
 	- minor corrections in documentation
+
+0.10  Fri May 6 2005
+	- almost completely rewritten to use XML::Parser instead of XML::Parser::Lite::Tree
+	- new options to include/drop hidden rows/col, covered cells etc.
+	- optionally truncate empty rows and columns
+	- optionally replace newlines in cells with any string
+	- new subroutines for reading unpacked XML data from SXC files
+	- option to return date cells as standard date value
