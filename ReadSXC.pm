@@ -8,7 +8,7 @@ require Exporter;
 
 our @ISA = qw(Exporter);
 our @EXPORT_OK = qw(read_sxc read_xml_file read_xml_string);
-our $VERSION = '0.11';
+our $VERSION = '0.12';
 
 use Archive::Zip;
 use XML::Parser;
@@ -89,6 +89,9 @@ sub collect_data {
 				splice(@{$node_ref}, 0, 2);
 			}
 
+		},
+		'office:annotation'		=> sub {
+			$#{$node_ref} = -1;
 		},
 		'table:table-cell'		=> sub	{
 			$col++;

@@ -22,3 +22,6 @@ Revision history for Perl extension Spreadsheet::ReadSXC.
 0.11  Sun May 8 2005
 	- eliminated a bug with 'DropHiddenColumns' which would populate an empty table
 	- edited documentation
+
+0.12  Sun May 8 2005
+	- comments no longer appear in cells (have to find a cleaner way of returning annotations)
