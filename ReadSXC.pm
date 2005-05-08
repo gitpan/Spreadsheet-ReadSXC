@@ -8,7 +8,7 @@ require Exporter;
 
 our @ISA = qw(Exporter);
 our @EXPORT_OK = qw(read_sxc read_xml_file read_xml_string);
-our $VERSION = '0.10';
+our $VERSION = '0.11';
 
 use Archive::Zip;
 use XML::Parser;
@@ -206,13 +206,15 @@ sub collect_data {
 				}
 			}
 			if ( $options{'DropHiddenColumns'} ) {
-				my $width = $#{$workbook{$table}[0]};
-				foreach ( @{$workbook{$table}} ) {
+				unless ( $#{$workbook{$table}} == -1 ) {	# Don't process empty tables
+					my $width = $#{$workbook{$table}[0]};
+					foreach ( @{$workbook{$table}} ) {
 # Don't splice the row if it is a reference to the previous row (which has already been processed)
-					unless ( $#{$_} < $width ) {
-						for ( my $col = $#{$_}; $col >= 0; $col-- ) {
-							if ( ! $col_visible[$col] )  {
-								splice ( @{$_}, $col, 1 );
+						unless ( $#{$_} < $width ) {
+							for ( my $col = $#{$_}; $col >= 0; $col-- ) {
+								if ( ! $col_visible[$col] )  {
+									splice ( @{$_}, $col, 1 );
+								}
 							}
 						}
 					}
@@ -282,7 +284,7 @@ Spreadsheet::ReadSXC - Extract OpenOffice 1.x spreadsheet data
      print "Worksheet ", $_, " contains ", $#{$$workbook_ref{$_}} + 1, " row(s):\n";
      foreach ( @{$$workbook_ref{$_}} ) {
         foreach ( map { defined $_ ? $_ : '' } @{$_} ) {
-	   print utf8(" '$_'");
+	   print utf8(" '$_'")->as_string;
         }
         print "\n";
      }
@@ -339,13 +341,15 @@ undef values in array rows. The example code above shows how to
 replace undef values with empty strings.
 
 If the .sxc file contains an empty spreadsheet its hash element will
-point to an empty array.
+point to an empty array (unless you use the 'NoTruncate' option in
+which case it will point to an array of an array containing one
+undefined element).
 
 OpenOffice uses UTF-8 encoding. It depends on your environment how
 the data returned by the XML Parser is best handled:
 
   use Unicode::String qw(latin1 utf8);
-  $unicode_string = utf8($$workbook_ref{"Sheet1"}[0][0]);
+  $unicode_string = utf8($$workbook_ref{"Sheet1"}[0][0])->as_string;
 
   # this will not work for characters outside ISO-8859-1:
 
@@ -449,6 +453,16 @@ obtain the date value as contained in the table:date-value attribute,
 use the following key/value pair in your hash of options:
 
   'StandardDate' => 1
+
+This option is a first step on the way to a different approach at
+reading data from .sxc files. There should be more options to read in
+values instead of the strings OpenOffice displays. It should give
+more flexibility in working with the data obtained from OpenOffice
+spreadsheets. 'float', 'percentage', and 'time' values should be
+next. 'currency' is less obvious, though, as we need to consider
+both its value and the 'table:currency' attribute. Formulas and
+array formulas are yet another issue.
+
 
 =back
 

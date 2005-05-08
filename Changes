@@ -18,3 +18,7 @@ Revision history for Perl extension Spreadsheet::ReadSXC.
 	- optionally replace newlines in cells with any string
 	- new subroutines for reading unpacked XML data from SXC files
 	- option to return date cells as standard date value
+
+0.11  Sun May 8 2005
+	- eliminated a bug with 'DropHiddenColumns' which would populate an empty table
+	- edited documentation

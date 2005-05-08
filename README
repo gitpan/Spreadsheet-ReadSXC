@@ -1,10 +1,10 @@
-Spreadsheet/ReadSXC version 0.10
+Spreadsheet/ReadSXC version 0.11
 =================================
 
 Extract OpenOffice 1.x spreadsheet data.
 
 Spreadsheet::ReadSXC extracts data from OpenOffice 1.x
-spreadsheet files (.sxc). It exports only one function read_sxc()
+spreadsheet files (.sxc). It exports the function read_sxc()
 which takes a filename and an optional reference to a hash of
 options as arguments and returns a hash of references to
 two-dimensional arrays. The hash keys correspond to the names of
@@ -14,8 +14,8 @@ correspond to rows and cells in the respective spreadsheets.
 Spreadsheet::ReadSXC requires XML::Parser to parse the XML
 contained in .sxc files. It recursively traverses an XML tree
 to find spreadsheet cells and collect their data. Only the contents
-of text:p elements are returned, not the actual values of
-table:value attributes.
+of 'text:p' elements are returned, not the actual values of
+'table:value' attributes.
 
 Empty spreadsheet cells correspond to undef values in array rows.
 If the .sxc file contains an empty spreadsheet its hash element will
@@ -29,6 +29,23 @@ option is used).
 The behaviour of this module is controlled through several options,
 namely 'ReplaceNewlineWith', 'IncludeCoveredCells', 'DropHiddenRows',
 'DropHiddenColumns', 'NoTruncate', and 'StandardDate'.
+
+I'll add more options in the future so that you can choose between
+'text:p' contents and 'table:value' values the same way the
+'StandardDate' option lets you use a 'table:date-value' instead of
+its 'text:p' equivalent.
+
+I've added the read_xml_file() and read_xml_string() functions in
+version 0.10. These approaches could be unified so that read_sxc()
+would handle .sxc files, content.xml files, and xml strings
+alternatively. Another option would be a wrapper module 
+(Spreadsheet::ReadData) that would treat not only OpenOffice
+spreadsheet data, but also Excel files (using
+Spreadsheet::ParseExcel). This module could also add another
+interface through which cells could be accessed using the typical
+letter/number spreadsheet notation. Thanks to H.Merijn Brand for
+these suggestions.
+
 
 INSTALLATION
 
