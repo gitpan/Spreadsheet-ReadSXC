@@ -8,234 +8,225 @@ require Exporter;
 
 our @ISA = qw(Exporter);
 our @EXPORT_OK = qw(read_sxc read_xml_file read_xml_string);
-our $VERSION = '0.12';
+our $VERSION = '0.20';
 
 use Archive::Zip;
 use XML::Parser;
 
-my %workbook;
-my $table;
-my $row;
-my $col;
-my $max_datarow;
-my $max_datacol;
-my $text_p_count;
-my $col_count;
-my @col_visible;
-my %options;
+my %workbook = ();
+my @worksheets = ();
+my @sheet_order = ();
+my $table = "";
+my $row = -1;
+my $col = -1;
+my $text_p = -1;
+my @cell = ();
+my $repeat_cells = 1;
+my $repeat_rows = 1;
+my $row_hidden = 0;
+my $date_value = '';
+my $time_value = '';
+my $max_datarow = -1;
+my $max_datacol = -1;
+my $col_count = -1;
+my @hidden_cols = ();
+my %options = ();
 
-sub read_sxc {
-	my $zip = Archive::Zip->new(shift);
-	my $content = $zip->contents('content.xml');
-	my $options_ref = shift;
-	my $workbook_ref = read_xml_string($content, $options_ref);
-	return $workbook_ref;
+sub zip_error_handler {}
+
+sub read_sxc ($;$) {
+	my ($sxc_file, $options_ref) = @_;
+	-f $sxc_file && -s _ or return undef;
+	Archive::Zip::setErrorHandler(\&zip_error_handler);
+	eval {
+		my $zip = Archive::Zip->new($sxc_file);
+		my $xml_string = $zip->contents('content.xml');
+		return read_xml_string($xml_string, $options_ref);
+	};
 }
 
-sub read_xml_file {
-	open(CONTENT, shift) or die "Cannot open file: $!";
-	my $content;
-	while (<CONTENT>) {
-		$content .= $_;
-	}
+sub read_xml_file ($;$) {
+	my ($xml_file, $options_ref) = @_;
+	-f $xml_file && -s _ or return undef;
+	local $/;
+	open CONTENT, "<$xml_file" or die "$xml_file: $!\n";
+	my $xml_string = <CONTENT>;
 	close CONTENT;
-	my $options_ref = shift;
-	my $workbook_ref = read_xml_string($content, $options_ref);
-	return $workbook_ref;
+	return read_xml_string($xml_string, $options_ref);
 }
 
-sub read_xml_string {
-	my $content = shift;
-	my $p = new XML::Parser(Style=>'Tree');
-	my $tree = $p->parse($content);
-	my $options_ref = shift;
-	if ( defined $options_ref ) { %options = %{$options_ref}};
+sub read_xml_string ($;$) {
+	my ($xml_string, $options_ref) = @_;
 	%workbook = ();
-	&collect_data($$tree[0], $$tree[1]);
-	return \%workbook;
+	@worksheets = ();
+	if ( defined $options_ref ) { %options = %{$options_ref}}
+	eval {
+		my $p = XML::Parser->new(Handlers => {Start => \&handle_start,
+						      End => \&handle_end,
+						      Char => \&char_start});
+		$p->parse($xml_string);
+	};
+	if ( $options{OrderBySheet} ) { return [@worksheets] } else { return {%workbook} }
 }
 
-sub collect_data {
-	my $tag = shift;
-	my $node_ref = shift;
-	if ( $#{$node_ref} % 2 ) { die "Bad XML parse tree: Size of array is even"; }
-	my $attr_ref = shift @{$node_ref};
-	my %begin_code = (
-		'text:p'			=> sub	{
-			if ( $text_p_count ) {
-				if ( $options{'ReplaceNewlineWith'} ) {
-					$workbook{$table}[$row][$col] .= $options{'ReplaceNewlineWith'};
-				}
-			}
-			$text_p_count++;
-			while ( @{$node_ref} ) {
-				if ( $$node_ref[0] ) {
-					&collect_data($$node_ref[0], $$node_ref[1]);
-				}
-				else {
-					$workbook{$table}[$row][$col] .= $$node_ref[1];
-				}
-				splice(@{$node_ref}, 0, 2);
-			}
-		},
-		'text:span'			=> sub	{
-			while ( @{$node_ref} ) {
-				if ( $$node_ref[0] ) {
-					&collect_data($$node_ref[0], $$node_ref[1]);
-				}
-				else {
-					$workbook{$table}[$row][$col] .= $$node_ref[1];
-				}
-				splice(@{$node_ref}, 0, 2);
-			}
-
-		},
-		'office:annotation'		=> sub {
-			$#{$node_ref} = -1;
-		},
-		'table:table-cell'		=> sub	{
-			$col++;
-			$workbook{$table}[$row][$col] = undef;
-			$text_p_count = 0;
-			if (( exists $$attr_ref{'table:date-value'} ) and ( $options{'StandardDate'} )) {
-				$workbook{$table}[$row][$col] = $$attr_ref{'table:date-value'};
-				$#{$node_ref} = -1;
-				$text_p_count++;
-			}
-			else {
-				while ( @{$node_ref} ) {
-					&collect_data($$node_ref[0], $$node_ref[1]);
-					splice(@{$node_ref}, 0, 2);
-				}
-			}
-			if ( exists $$attr_ref{'table:number-columns-repeated'} ) {
-				for (2..$$attr_ref{'table:number-columns-repeated'}) {
-					$col++;
-					$workbook{$table}[$row][$col] = $workbook{$table}[$row][$col - 1];
-				}
-			}
-			if ( $text_p_count ) {
-				$max_datarow = $row;
-				if ( $col > $max_datacol ) { $max_datacol = $col; }
-			}
-		},
-		'table:covered-table-cell'	=> sub	{
-			$col++;
-			$workbook{$table}[$row][$col] = undef;
-			$text_p_count = 0;
-			if ( $options{'IncludeCoveredCells'} ) {
-				if (( exists $$attr_ref{'table:date-value'} ) and ( $options{'StandardDate'} )) {
-					$workbook{$table}[$row][$col] = $$attr_ref{'table:date-value'};
-					$#{$node_ref} = -1;
-					$text_p_count++;
-				}
-				else {
-					while ( @{$node_ref} ) {
-						&collect_data($$node_ref[0], $$node_ref[1]);
-						splice(@{$node_ref}, 0, 2);
-					}
-				}
-			}
-			else {
-				$#{$node_ref} = -1;
-			}
-			if ( exists $$attr_ref{'table:number-columns-repeated'} ) {
-				for (2..$$attr_ref{'table:number-columns-repeated'}) {
-					$col++;
-					$workbook{$table}[$row][$col] = $workbook{$table}[$row][$col - 1];
-				}
-			}
-			if ( $text_p_count ) {		# only if IncludeCoveredCells is set
-				$max_datarow = $row;
-				if ( $col > $max_datacol ) { $max_datacol = $col; }
-			}
-		},
-		'table:table-row'		=> sub	{
-			if (( exists $$attr_ref{'table:visibility'} ) and ( $options{'DropHiddenRows'} )) {
-				$#{$node_ref} = -1;
-			}
-			else {
-				$row++;
-				$workbook{$table}[$row] = undef;
-				$col = -1;
-				while ( @{$node_ref} ) {
-					&collect_data($$node_ref[0], $$node_ref[1]);
-					splice(@{$node_ref}, 0, 2);
-				}
-				if ( exists $$attr_ref{'table:number-rows-repeated'} ) {
-					for (2..$$attr_ref{'table:number-rows-repeated'}) {
-						$row++;
-						$workbook{$table}[$row] = $workbook{$table}[$row - 1];	# copy reference, not data
-					}
-					if ( grep { defined $_ } @{$workbook{$table}[$row]} ) {
-						$max_datarow = $row;
-					}
-				}
-			}
-		},
-		'table:table-column'		=> sub {
-			$col_count++;
-			if ( $options{'DropHiddenColumns'} ) {
-				if ( exists $$attr_ref{'table:visibility'} ) {
-					$col_visible[$col_count] = 0;
-				}
-				else {
-					$col_visible[$col_count] = 1;
-				}
-			}
-			if ( exists $$attr_ref{'table:number-columns-repeated'} ) {
-				for (2..$$attr_ref{'table:number-columns-repeated'} ) {
-					$col_count++;
-					$col_visible[$col_count] = $col_visible[$col_count - 1];
-				}
-			}
-		},
-		'table:table'			=> sub	{
-			$table = $$attr_ref{'table:name'};
-			$workbook{$table} = undef;
-			$col_count = -1;
-			$#col_visible = -1;
-			$row = -1;
-			$max_datarow = -1;
-			$max_datacol = -1;
-			while ( @{$node_ref} ) {
-				&collect_data($$node_ref[0], $$node_ref[1]);
-				splice(@{$node_ref}, 0, 2);
-			}
-			if ( ! $options{'NoTruncate'} ) {
-				$#{$workbook{$table}} = $max_datarow;
-				foreach ( @{$workbook{$table}} ) {
-					$#{$_} = $max_datacol;
-				}
-			}
-			if ( $options{'DropHiddenColumns'} ) {
-				unless ( $#{$workbook{$table}} == -1 ) {	# Don't process empty tables
-					my $width = $#{$workbook{$table}[0]};
-					foreach ( @{$workbook{$table}} ) {
-# Don't splice the row if it is a reference to the previous row (which has already been processed)
-						unless ( $#{$_} < $width ) {
-							for ( my $col = $#{$_}; $col >= 0; $col-- ) {
-								if ( ! $col_visible[$col] )  {
-									splice ( @{$_}, $col, 1 );
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-	);
-	if ( $begin_code{$tag} ) {
-		$begin_code{$tag}->();
+sub handle_start {
+	my ($expat, $element, %attributes) = @_;
+	if ( $element eq "text:p" ) {
+# increase paragraph count if not part of an annotation
+		if ( ! $expat->within_element('office:annotation') ) { $text_p++ }
 	}
-	while ( @{$node_ref} ) {
-		if ( $$node_ref[0] ) {		# Don't collect data if not in table nodes
-			&collect_data($$node_ref[0], $$node_ref[1]);
+	elsif ( ( $element eq "table:table-cell" ) or ( $element eq "table:covered-table-cell" ) ) {
+# increase cell count
+		$col++;
+# if number-columns-repeated is set, set $repeat_cells value accordingly for later use
+		if ( exists $attributes{'table:number-columns-repeated'} ) {
+			$repeat_cells = $attributes{'table:number-columns-repeated'};
 		}
-		splice(@{$node_ref}, 0, 2);
+# if cell contains date or time values, set boolean variable for later use
+		if (exists $attributes{'table:date-value'} ) {
+			$date_value = $attributes{'table:date-value'};
+		}
+		elsif (exists $attributes{'table:time-value'} ) {
+			$time_value = $attributes{'table:time-value'};
+		}
+	}
+	elsif ( $element eq "table:table-row" ) {
+# increase row count
+		$row++;
+# if row is hidden, set $row_hidden for later use
+		if ( exists $attributes{'table:visibility'} ) { $row_hidden = 1 } else { $row_hidden = 0 }
+# if number-rows-repeated is set, set $repeat_rows value accordingly for later use
+		if ( exists $attributes{'table:number-rows-repeated'} ) {
+			$repeat_rows = $attributes{'table:number-rows-repeated'};
+		}
+	}
+	elsif ( $element eq "table:table-column" ) {
+# increase column count
+		$col_count++;
+# if columns is hidden, add column number to @hidden_cols array for later use
+		if ( exists $attributes{'table:visibility'} ) {
+			push @hidden_cols, $col_count;
+		}
+# if number-columns-repeated is set and column is hidden, add affected columns to @hidden_cols
+		if ( exists $attributes{'table:number-columns-repeated'} ) {
+			$col_count++;
+			if ( exists $attributes{'table:visibility'} ) {
+				for (2..$attributes{'table:number-columns-repeated'}) {
+					push @hidden_cols, $hidden_cols[$#hidden_cols] + 1;
+				}
+			}
+		}
+	}
+	elsif ( $element eq "table:table" ) {
+# get name of current table
+		$table = $attributes{'table:name'};
 	}
 }
 
+sub handle_end {
+	my ($expat, $element) = @_;
+	if ( $element eq "table:table") {
+# decrease $max_datacol if hidden columns within range
+		if ( ( ! $options{NoTruncate} ) and ( $options{DropHiddenColumns} ) ) {
+			for ( 1..scalar grep { $_ <= $max_datacol } @hidden_cols ) {
+				$max_datacol--;
+			}
+		}
+# truncate table to $max_datarow and $max_datacol
+		if ( ! $options{NoTruncate} ) {
+			$#{$workbook{$table}} = $max_datarow;
+			foreach ( @{$workbook{$table}} ) {
+				$#{$_} = $max_datacol;
+			}
+		}
+# set up alternative data structure
+		if ( $options{OrderBySheet} ) {
+			push @worksheets, (
+				{
+					label	=> $table,
+					data	=> \@{$workbook{$table}},
+				}
+			);
+		}
+# reset table, column, and row values to default for next table
+		$row = -1;
+		$max_datarow = -1;
+		$max_datacol = -1;
+		$table = "";
+		$col_count = -1;
+		@hidden_cols = ();
+	}
+	elsif ( $element eq "table:table-row" ) {
+# drop hidden columns from current row
+		if ( $options{DropHiddenColumns} ) {
+			foreach ( reverse @hidden_cols ) {
+				splice @{$workbook{$table}[$row]}, $_, 1;
+			}
+		}
+# drop current row, if hidden
+		if ( ( $options{DropHiddenRows} ) and ( $row_hidden == 1 ) ) {
+			pop @{$workbook{$table}};
+			$row--;
+		}
+# repeat current row, if necessary
+		else {
+			for (2..$repeat_rows) {
+				$row++;
+				$workbook{$table}[$row] = $workbook{$table}[$row - 1]	# copy reference, not data
+			}
+# set max_datarow, if row not empty
+			if ( grep { defined $_ } @{$workbook{$table}[$row]} ) {
+				$max_datarow = $row;
+			}
+		}
+# reset row and col values to default for next row
+		$repeat_rows = 1;
+		$col = -1;
+	}
+	elsif ( ( $element eq "table:table-cell" ) or ( $element eq "table:covered-table-cell" ) ) {
+# assign date or time value to current workbook cell if requested
+		if ( ( $options{StandardDate} ) and ( $date_value ) ) {
+			$workbook{$table}[$row][$col] = $date_value;
+			$date_value = '';
+		}
+		elsif ( ( $options{StandardTime} ) and ( $time_value ) ) {
+			$workbook{$table}[$row][$col] = $time_value;
+			$time_value = '';
+		}
+# join cell contents and assign to current workbook cell
+		else {
+			$workbook{$table}[$row][$col] = @cell ? join $options{ReplaceNewlineWith} || "", @cell : undef;
+		}
+# repeat current cell, if necessary
+		for (2..$repeat_cells) {
+			$col++;
+			$workbook{$table}[$row][$col] = $workbook{$table}[$row][$col - 1];
+		}
+# reset cell and paragraph values to default for next cell
+		@cell = ();
+		$repeat_cells = 1;
+		$text_p = -1;
+	}
+}
+
+sub char_start {
+	my ($expat, $content) = @_;
+# don't include paragraph if part of an annotation
+	if ( $expat->within_element('office:annotation') ) {
+		return;
+	}
+# don't include covered cells, if not requested
+	if ( ( $expat->within_element('table:covered-table-cell') ) and ( ! $options{IncludeCoveredCells} ) ) {
+		return;
+	}
+# add paragraph or textspan to current @cell array
+	if ( $table ) {
+		$cell[$text_p] .= $content;
+# set $max_datarow and $max_datacol to current values
+		$max_datarow = $row;
+		if ( $col > $max_datacol ) { $max_datacol = $col }
+	}
+}
 
 1;
 __END__
@@ -269,12 +260,14 @@ Spreadsheet::ReadSXC - Extract OpenOffice 1.x spreadsheet data
   # Control the output through a hash of options (below are the defaults):
 
   my %options = (
-	'ReplaceNewlineWith'	=> "",
-	'IncludeCoveredCells'	=> 0,
-	'DropHiddenRows'	=> 0,
-	'DropHiddenColumns'	=> 0,
-	'NoTruncate'		=> 0,
-	'StandardDate'		=> 0,
+	ReplaceNewlineWith	=> "",
+	IncludeCoveredCells	=> 0,
+	DropHiddenRows		=> 0,
+	DropHiddenColumns	=> 0,
+	NoTruncate		=> 0,
+	StandardDate		=> 0,
+	StandardTime		=> 0,
+	OrderBySheet		=> 0,
   );
   my $workbook_ref = read_sxc("/path/to/file.sxc", \%options );
 
@@ -319,7 +312,10 @@ filename and an optional reference to a hash of options as
 arguments and returns a reference to a hash of references to
 two-dimensional arrays. The hash keys correspond to the names of
 worksheets in the OpenOffice workbook. The two-dimensional arrays
-correspond to rows and cells in the respective spreadsheets.
+correspond to rows and cells in the respective spreadsheets. If
+you don't like this because the order of sheets is not preserved
+in a hash, read on. The 'OrderBySheet' option provides an array
+of hashes instead.
 
 If you prefer to unpack the .sxc file yourself, you can use the
 function read_xml_file() instead and pass the path to content.xml
@@ -329,14 +325,13 @@ functions also take a reference to a hash of options as an
 optional second argument.
 
 Spreadsheet::ReadSXC requires XML::Parser to parse the XML
-contained in .sxc files. It recursively traverses an XML tree to
-find spreadsheet cells and collect their data. Only the contents
-of text:p elements are returned, not the actual values of
-table:value attributes. For example, a cell might have a
-table:value-type attribute of "currency", a table:value attribute
-of "-1500.99" and a table:currency attribute of "USD". The text:p
-element would contain "-$1,500.99". This is the string which is
-returned by the read_sxc() function, not the value of -1500.99.
+contained in .sxc files. Only the contents of text:p elements are
+returned, not the actual values of table:value attributes. For
+example, a cell might have a table:value-type attribute of
+"currency", a table:value attribute of "-1500.99" and a
+table:currency attribute of "USD". The text:p element would
+contain "-$1,500.99". This is the string which is returned by the
+read_sxc() function, not the value of -1500.99.
 
 Spreadsheet::ReadSXC was written with data import into an SQL
 database in mind. Therefore empty spreadsheet cells correspond to
@@ -383,14 +378,12 @@ changed, too:
   $$workbook_ref{"Sheet1"}[0][0] = 'new string';
   print $$workbook_ref{"Sheet1"}[1][0];
 
-Keep in mind that after parsing a new .sxc file any reference previously
-returned by the read_sxc() function will point to the new data structure.
-Derefence the hash to save your data before parsing a new file. Or
-derefence when calling the read_sxc() function:
-
-  %workbook = %{$workbook_ref};
-  %new_workbook = %{read_sxc("/path/to/newfile.sxc")};
-
+As of version 0.20 the references returned by read_sxc() et al. remain
+valid after subsequent calls to the same function. In earlier versions,
+calling read_sxc() with a different file as the argument would change
+the data referenced by the original return value, so you had to
+derefence it before making another call. Thanks to H. Merijn Brand for
+fixing this.
 
 
 =head1 OPTIONS
@@ -404,7 +397,7 @@ are concatenated to a single string which does not contain a newline. To
 keep the newline characters, use the following key/value pair in your
 hash of options: 
 
-  'ReplaceNewlineWith' => "\n"
+  ReplaceNewlineWith => "\n"
 
 However, you may replace newlines with any string you like.
 
@@ -417,7 +410,7 @@ the merged cells. To include covered cells in the data structure which
 is returned by parse_sxc(), use the following key/value pair in your
 hash of options:
 
-  'IncludeCoveredCells' => 1
+  IncludeCoveredCells => 1
 
 
 =item DropHiddenRows
@@ -426,7 +419,7 @@ By default, hidden rows are included in the data structure returned by
 parse_sxc(). To drop those rows, use the following key/value pair in
 your hash of options:
 
-  'DropHiddenRows' => 1
+  DropHiddenRows => 1
 
 
 =item DropHiddenColumns
@@ -435,7 +428,7 @@ By default, hidden columns are included in the data structure returned
 by parse_sxc(). To drop those rows, use the following key/value pair
 in your hash of options:
 
-  'DropHiddenColumns' => 1
+  DropHiddenColumns => 1
 
 
 =item NoTruncate
@@ -446,7 +439,7 @@ row containing data and empty columns beyond the last column
 containing data. If you prefer to keep those rows and columns, use the
 following key/value pair in your hash of options:
 
-  'NoTruncate' => 1
+  NoTruncate => 1
 
 
 =item StandardDate
@@ -455,16 +448,45 @@ By default, date cells are returned as formatted. If you prefer to
 obtain the date value as contained in the table:date-value attribute,
 use the following key/value pair in your hash of options:
 
-  'StandardDate' => 1
+  StandardDate => 1
 
-This option is a first step on the way to a different approach at
+
+=item StandardTime
+
+By default, time cells are returned as formatted. If you prefer to
+obtain the time value as contained in the table:time-value attribute,
+use the following key/value pair in your hash of options:
+
+  StandardTime => 1
+
+These options are a first step on the way to a different approach at
 reading data from .sxc files. There should be more options to read in
 values instead of the strings OpenOffice displays. It should give
 more flexibility in working with the data obtained from OpenOffice
-spreadsheets. 'float', 'percentage', and 'time' values should be
-next. 'currency' is less obvious, though, as we need to consider
-both its value and the 'table:currency' attribute. Formulas and
-array formulas are yet another issue.
+spreadsheets. 'float' and 'percentage' values could be next.
+'currency' is less obvious, though, as we need to consider both its
+value and the 'table:currency' attribute. Formulas and array formulas
+are yet another issue. I probably won't deal with this until I've
+given this module an object-oriented interface.
+
+
+=item OrderBySheet
+
+The disadvantage of storing worksheets by name in a hash is that the
+order of sheets is lost. If you prefer not to obtain such a hash, but
+an array of worksheets insted, use the following key/value pair in
+your hash of options:
+
+  OrderBySheet => 1
+
+Thus the read_sxc function will return an array of hashes, each of
+which will have two keys, "label" and "data". The value of "label"
+is the name of the sheet. The value of data is a reference to a
+two-dimensional array containing rows and columns of the worksheet:
+
+  my $worksheets_ref = read_sxc("/path/to/file.sxc");
+  my $name_of_first_sheet = $$worksheets_ref[0]{label};
+  my $first_cell_of_first_sheet = $$worksheets_ref[0]{data}[0][0];
 
 
 =back
@@ -474,8 +496,9 @@ array formulas are yet another issue.
 =head1 SEE ALSO
 
 
-http://books.evc-cit.info/book.html has extensive documentation of the
-OpenOffice 1.x XML file format.
+http://books.evc-cit.info/oobook/book.html has extensive documentation
+of the OpenOffice 1.x XML file format (soon to be replaced by the
+OASIS file format, see http://books.evc-cit.info/odbook/book.html).
 
 
 
